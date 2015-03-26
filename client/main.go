@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -8,9 +9,18 @@ import (
 	"github.com/docker/docker/pkg/term"
 )
 
-func main() {
-	done := make(chan struct{})
+func terminate(s *term.State, err error) {
+	term.RestoreTerminal(0, s)
+	fmt.Println()
+	fmt.Println("Shell exited!")
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
 
+func main() {
 	c, err := net.Dial("tcp", "localhost:4567")
 	if err != nil {
 		panic(err)
@@ -23,26 +33,29 @@ func main() {
 
 	ws, err := term.GetWinsize(0)
 	if err != nil {
-		panic(err)
+		terminate(s, err)
 	}
 
-	if _, err := c.Write([]byte{byte(ws.Height & 0xFF), byte((ws.Height & 0xFF00) >> 8), byte(ws.Width & 0xFF), byte((ws.Width & 0xFF00) >> 8)}); err != nil {
-		panic(err)
+	if _, err := c.Write([]byte{
+		byte(ws.Height & 0xFF),
+		byte((ws.Height & 0xFF00) >> 8),
+		byte(ws.Width & 0xFF),
+		byte((ws.Width & 0xFF00) >> 8),
+	}); err != nil {
+		terminate(s, err)
 	}
 
 	go func() {
 		io.Copy(os.Stdout, c)
-		done <- struct{}{}
+		terminate(s, err)
 	}()
 
 	go func() {
 		io.Copy(c, os.Stdin)
-		done <- struct{}{}
+		terminate(s, err)
 	}()
 
-	for i := 0; i < 2; i++ {
-		<-done
-	}
+	select {}
 
-	term.RestoreTerminal(0, s)
+	fmt.Println("Shell exited!")
 }

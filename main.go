@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -21,17 +22,20 @@ func main() {
 		panic(err)
 	}
 
-	cmd := exec.Command("/bin/zsh")
+	cmd := exec.Command(os.Getenv("SHELL"))
 	pty, err := pty.Start(cmd)
 
 	go func() {
 		cmd.Wait()
 		pty.Close()
 		term.RestoreTerminal(0, s)
+
+		fmt.Println()
+		fmt.Println("Shell exited!")
 		os.Exit(0)
 	}()
 
-	l, err := net.Listen("tcp", "localhost:4567")
+	l, err := net.Listen("tcp", "0.0.0.0:4567")
 	if err != nil {
 		panic(err)
 	}
