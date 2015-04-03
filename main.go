@@ -20,13 +20,18 @@ var (
 )
 
 func main() {
+	if len(os.Args) != 3 {
+		fmt.Printf("usage: %s [ip:port]\n", os.Args[0])
+		os.Exit(1)
+	}
+
 	s, err := term.MakeRaw(0)
 
 	if err != nil {
 		panic(err)
 	}
 
-	cmd := exec.Command(os.Getenv("SHELL"))
+	cmd := exec.Command(os.Args[2])
 	pty, err := pty.Start(cmd)
 
 	ws, err := term.GetWinsize(0)
@@ -48,7 +53,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	l, err := net.Listen("tcp", "0.0.0.0:4567")
+	l, err := net.Listen("tcp", os.Args[1])
 	if err != nil {
 		panic(err)
 	}

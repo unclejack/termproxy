@@ -21,7 +21,12 @@ func terminate(s *term.State, err error) {
 }
 
 func main() {
-	c, err := net.Dial("tcp", "localhost:4567")
+	if len(os.Args) != 2 {
+		fmt.Printf("usage: %s [host]\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	c, err := net.Dial("tcp", os.Args[1])
 	if err != nil {
 		panic(err)
 	}
