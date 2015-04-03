@@ -1,5 +1,7 @@
 # termproxy: share a program with others (for pairing!)
 
+**termproxy is currently alpha quality**
+
 termproxy is a shared program tool. It allows you to start the program of your
 choice (a shell, vim/emacs, etc) and allows others to connect and interact with
 it. The intended use case is pairing.
