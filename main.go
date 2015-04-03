@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -62,7 +64,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	l, err := tls.Listen("tcp", os.Args[1], &tls.Config{Certificates: []tls.Certificate{cert}})
+	content, err := ioutil.ReadFile("ca.crt")
+	if err != nil {
+		panic(err)
+	}
+
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(content)
+
+	l, err := tls.Listen("tcp", os.Args[1], &tls.Config{
+		RootCAs:      pool,
+		ClientCAs:    pool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		Certificates: []tls.Certificate{cert},
+	})
+
 	if err != nil {
 		panic(err)
 	}
@@ -74,6 +90,7 @@ func main() {
 		for {
 			c, err := l.Accept()
 			if err != nil {
+				fmt.Println(err)
 				continue
 			}
 
@@ -83,7 +100,8 @@ func main() {
 
 			buf := make([]byte, 4)
 			if n, err := c.Read(buf); n != 4 || err != nil {
-				panic(err)
+				fmt.Println(err)
+				continue
 			}
 
 			ws := term.Winsize{}

@@ -36,7 +36,23 @@ func main() {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(content)
 
-	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{RootCAs: pool})
+	content, err = ioutil.ReadFile("server.crt")
+	if err != nil {
+		panic(err)
+	}
+
+	pool.AppendCertsFromPEM(content)
+
+	cert, err := tls.LoadX509KeyPair("client.crt", "client.key")
+	if err != nil {
+		panic(err)
+	}
+
+	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{
+		ClientCAs:    pool,
+		RootCAs:      pool,
+		Certificates: []tls.Certificate{cert},
+	})
 	if err != nil {
 		panic(err)
 	}
