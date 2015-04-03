@@ -6,7 +6,7 @@ it. The intended use case is pairing.
 
 ## SSL Notice
 
-*NOTE*: termproxy is currently TLS encrypted, but with no authentication. You
+**NOTE**: termproxy is currently TLS encrypted, but with no authentication. You
 must generate a CA and server keypair before you can use this program. It is
 not safe to leave this program running against the open internet! This is going
 to be fixed with client authentication in a future release.
