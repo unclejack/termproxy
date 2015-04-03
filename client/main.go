@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
-	"net"
+	"io/ioutil"
 	"os"
 
 	"github.com/docker/docker/pkg/term"
@@ -26,7 +28,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	c, err := net.Dial("tcp", os.Args[1])
+	content, err := ioutil.ReadFile("ca.crt")
+	if err != nil {
+		panic(err)
+	}
+
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(content)
+
+	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{RootCAs: pool})
 	if err != nil {
 		panic(err)
 	}

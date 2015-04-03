@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -21,7 +22,7 @@ var (
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Printf("usage: %s [ip:port]\n", os.Args[0])
+		fmt.Printf("usage: %s [ip:port] [program]\n", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -53,7 +54,15 @@ func main() {
 		os.Exit(0)
 	}()
 
-	l, err := net.Listen("tcp", os.Args[1])
+	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		fmt.Println("Error", err)
+		fmt.Println("Please place files named 'server.crt' and 'server.key' in the current directory.")
+		fmt.Println("Use generate_cert to generate them: `go get github.com/SvenDowideit/generate_cert`")
+		os.Exit(1)
+	}
+
+	l, err := tls.Listen("tcp", os.Args[1], &tls.Config{Certificates: []tls.Certificate{cert}})
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +74,7 @@ func main() {
 		for {
 			c, err := l.Accept()
 			if err != nil {
-				panic(err)
+				continue
 			}
 
 			connMutex.Lock()
