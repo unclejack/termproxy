@@ -9,6 +9,14 @@ import (
 	"os"
 
 	"github.com/docker/docker/pkg/term"
+	"github.com/ogier/pflag"
+)
+
+var (
+	caCertPath     = pflag.String("ca", "ca.crt", "Path to CA Certificate")
+	serverCertPath = pflag.StringP("servercert", "s", "server.crt", "Path to Server Certificate")
+	clientCertPath = pflag.StringP("cert", "c", "client.crt", "Path to Client Certificate")
+	clientKeyPath  = pflag.StringP("key", "k", "client.key", "Path to Client Key")
 )
 
 func terminate(s *term.State, err error) {
@@ -23,12 +31,14 @@ func terminate(s *term.State, err error) {
 }
 
 func main() {
-	if len(os.Args) != 2 {
+	pflag.Parse()
+
+	if pflag.NArg() != 1 {
 		fmt.Printf("usage: %s [host]\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	content, err := ioutil.ReadFile("ca.crt")
+	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
 		panic(err)
 	}
@@ -36,19 +46,19 @@ func main() {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(content)
 
-	content, err = ioutil.ReadFile("server.crt")
+	content, err = ioutil.ReadFile(*serverCertPath)
 	if err != nil {
 		panic(err)
 	}
 
 	pool.AppendCertsFromPEM(content)
 
-	cert, err := tls.LoadX509KeyPair("client.crt", "client.key")
+	cert, err := tls.LoadX509KeyPair(*clientCertPath, *clientKeyPath)
 	if err != nil {
 		panic(err)
 	}
 
-	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{
+	c, err := tls.Dial("tcp", pflag.Arg(0), &tls.Config{
 		ClientCAs:    pool,
 		RootCAs:      pool,
 		Certificates: []tls.Certificate{cert},
