@@ -14,6 +14,7 @@ import (
 
 	"github.com/docker/docker/pkg/term"
 	"github.com/kr/pty"
+	"github.com/ogier/pflag"
 )
 
 var (
@@ -22,8 +23,16 @@ var (
 	connections = []net.Conn{}
 )
 
+var (
+	caCertPath     = pflag.String("ca", "ca.crt", "Path to CA Certificate")
+	serverCertPath = pflag.StringP("cert", "c", "server.crt", "Path to server certificate")
+	serverKeyPath  = pflag.StringP("key", "k", "server.key", "Path to server key")
+)
+
 func main() {
-	if len(os.Args) != 3 {
+	pflag.Parse()
+
+	if pflag.NArg() != 2 {
 		fmt.Printf("usage: %s [ip:port] [program]\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -34,7 +43,7 @@ func main() {
 		panic(err)
 	}
 
-	cmd := exec.Command(os.Args[2])
+	cmd := exec.Command(pflag.Arg(1))
 	pty, err := pty.Start(cmd)
 
 	ws, err := term.GetWinsize(0)
@@ -56,15 +65,15 @@ func main() {
 		os.Exit(0)
 	}()
 
-	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	cert, err := tls.LoadX509KeyPair(*serverCertPath, *serverKeyPath)
 	if err != nil {
 		fmt.Println("Error", err)
-		fmt.Println("Please place files named 'server.crt' and 'server.key' in the current directory.")
-		fmt.Println("Use generate_cert to generate them: `go get github.com/SvenDowideit/generate_cert`")
+		fmt.Println("You can use generate_cert to generate your certificates: ")
+		fmt.Println("`go get github.com/SvenDowideit/generate_cert`")
 		os.Exit(1)
 	}
 
-	content, err := ioutil.ReadFile("ca.crt")
+	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +81,7 @@ func main() {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(content)
 
-	l, err := tls.Listen("tcp", os.Args[1], &tls.Config{
+	l, err := tls.Listen("tcp", pflag.Arg(0), &tls.Config{
 		RootCAs:      pool,
 		ClientCAs:    pool,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
