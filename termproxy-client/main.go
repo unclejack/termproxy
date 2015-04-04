@@ -62,6 +62,7 @@ func main() {
 		ClientCAs:    pool,
 		RootCAs:      pool,
 		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
 	})
 	if err != nil {
 		panic(err)

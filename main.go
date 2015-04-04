@@ -86,6 +86,7 @@ func main() {
 		ClientCAs:    pool,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
 	})
 
 	if err != nil {
