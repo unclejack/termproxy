@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -30,11 +31,16 @@ var (
 )
 
 func main() {
+	pflag.Usage = func() {
+		fmt.Printf("usage: %s <options> [host] [program]\n", filepath.Base(os.Args[0]))
+		pflag.PrintDefaults()
+		os.Exit(1)
+	}
+
 	pflag.Parse()
 
 	if pflag.NArg() != 2 {
-		fmt.Printf("usage: %s [ip:port] [program]\n", os.Args[0])
-		os.Exit(1)
+		pflag.Usage()
 	}
 
 	s, err := term.MakeRaw(0)
