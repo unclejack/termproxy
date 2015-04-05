@@ -39,7 +39,7 @@ func main() {
 
 	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read CA certificate '%s': %v", *caCertPath, err), tperror.ErrTLS})
 	}
 
 	pool := x509.NewCertPool()
@@ -47,14 +47,14 @@ func main() {
 
 	content, err = ioutil.ReadFile(*serverCertPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read server certificate '%s': %v", *serverCertPath, err), tperror.ErrTLS})
 	}
 
 	pool.AppendCertsFromPEM(content)
 
 	cert, err := tls.LoadX509KeyPair(*clientCertPath, *clientKeyPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read client keypair '%s' and '%s': %v", *clientCertPath, *clientKeyPath, err), tperror.ErrTLS})
 	}
 
 	c, err := tls.Dial("tcp", pflag.Arg(0), &tls.Config{
@@ -64,12 +64,12 @@ func main() {
 		MinVersion:   tls.VersionTLS12,
 	})
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not connect to server at %s: %v", pflag.Arg(0), err), tperror.ErrTLS | tperror.ErrNetwork})
 	}
 
 	windowState, err = term.MakeRaw(0)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not create a raw terminal: %v", err), tperror.ErrTerminal})
 	}
 
 	ws, err := term.GetWinsize(0)
