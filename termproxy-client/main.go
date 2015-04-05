@@ -9,7 +9,12 @@ import (
 	"os"
 
 	"github.com/docker/docker/pkg/term"
+	"github.com/erikh/termproxy/tperror"
 	"github.com/ogier/pflag"
+)
+
+var (
+	windowState *term.State
 )
 
 var (
@@ -19,15 +24,9 @@ var (
 	clientKeyPath  = pflag.StringP("key", "k", "client.key", "Path to Client Key")
 )
 
-func terminate(s *term.State, err error) {
-	term.RestoreTerminal(0, s)
-	fmt.Println()
-	fmt.Println("Shell exited!")
-	if err != nil {
-		fmt.Printf("Error: %v", err)
-		os.Exit(1)
-	}
-	os.Exit(0)
+func errorOut(err tperror.TPError) {
+	term.RestoreTerminal(0, windowState)
+	tperror.ErrorOut(err)
 }
 
 func main() {
@@ -40,7 +39,7 @@ func main() {
 
 	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read CA certificate '%s': %v", *caCertPath, err), tperror.ErrTLS})
 	}
 
 	pool := x509.NewCertPool()
@@ -48,14 +47,14 @@ func main() {
 
 	content, err = ioutil.ReadFile(*serverCertPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read server certificate '%s': %v", *serverCertPath, err), tperror.ErrTLS})
 	}
 
 	pool.AppendCertsFromPEM(content)
 
 	cert, err := tls.LoadX509KeyPair(*clientCertPath, *clientKeyPath)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not read client keypair '%s' and '%s': %v", *clientCertPath, *clientKeyPath, err), tperror.ErrTLS})
 	}
 
 	c, err := tls.Dial("tcp", pflag.Arg(0), &tls.Config{
@@ -65,17 +64,17 @@ func main() {
 		MinVersion:   tls.VersionTLS12,
 	})
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not connect to server at %s: %v", pflag.Arg(0), err), tperror.ErrTLS | tperror.ErrNetwork})
 	}
 
-	s, err := term.MakeRaw(0)
+	windowState, err = term.MakeRaw(0)
 	if err != nil {
-		panic(err)
+		errorOut(tperror.TPError{fmt.Sprintf("Could not create a raw terminal: %v", err), tperror.ErrTerminal})
 	}
 
 	ws, err := term.GetWinsize(0)
 	if err != nil {
-		terminate(s, err)
+		errorOut(tperror.TPError{fmt.Sprintf("Error getting terminal size: %v", err), tperror.ErrTerminal})
 	}
 
 	if _, err := c.Write([]byte{
@@ -84,17 +83,19 @@ func main() {
 		byte(ws.Width & 0xFF),
 		byte((ws.Width & 0xFF00) >> 8),
 	}); err != nil {
-		terminate(s, err)
+		errorOut(tperror.TPError{fmt.Sprintf("Error writing terminal size to server: %v", err), tperror.ErrNetwork | tperror.ErrTerminal})
 	}
 
 	go func() {
-		io.Copy(os.Stdout, c)
-		terminate(s, err)
+		if _, err := io.Copy(os.Stdout, c); err != nil && err != io.EOF {
+			errorOut(tperror.TPError{fmt.Sprintf("Error reading from server: %v", err), tperror.ErrNetwork})
+		}
 	}()
 
 	go func() {
-		io.Copy(c, os.Stdin)
-		terminate(s, err)
+		if _, err := io.Copy(c, os.Stdin); err != nil && err != io.EOF {
+			errorOut(tperror.TPError{fmt.Sprintf("Error writing to server: %v", err), tperror.ErrNetwork})
+		}
 	}()
 
 	select {}
