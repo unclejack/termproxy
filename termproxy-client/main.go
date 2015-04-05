@@ -9,7 +9,12 @@ import (
 	"os"
 
 	"github.com/docker/docker/pkg/term"
+	"github.com/erikh/termproxy/tperror"
 	"github.com/ogier/pflag"
+)
+
+var (
+	windowState *term.State
 )
 
 var (
@@ -19,15 +24,9 @@ var (
 	clientKeyPath  = pflag.StringP("key", "k", "client.key", "Path to Client Key")
 )
 
-func terminate(s *term.State, err error) {
-	term.RestoreTerminal(0, s)
-	fmt.Println()
-	fmt.Println("Shell exited!")
-	if err != nil {
-		fmt.Printf("Error: %v", err)
-		os.Exit(1)
-	}
-	os.Exit(0)
+func errorOut(err tperror.TPError) {
+	term.RestoreTerminal(0, windowState)
+	tperror.ErrorOut(err)
 }
 
 func main() {
@@ -68,14 +67,14 @@ func main() {
 		panic(err)
 	}
 
-	s, err := term.MakeRaw(0)
+	windowState, err = term.MakeRaw(0)
 	if err != nil {
 		panic(err)
 	}
 
 	ws, err := term.GetWinsize(0)
 	if err != nil {
-		terminate(s, err)
+		errorOut(tperror.TPError{fmt.Sprintf("Error getting terminal size: %v", err), tperror.ErrTerminal})
 	}
 
 	if _, err := c.Write([]byte{
@@ -84,17 +83,19 @@ func main() {
 		byte(ws.Width & 0xFF),
 		byte((ws.Width & 0xFF00) >> 8),
 	}); err != nil {
-		terminate(s, err)
+		errorOut(tperror.TPError{fmt.Sprintf("Error writing terminal size to server: %v", err), tperror.ErrNetwork | tperror.ErrTerminal})
 	}
 
 	go func() {
-		io.Copy(os.Stdout, c)
-		terminate(s, err)
+		if _, err := io.Copy(os.Stdout, c); err != nil && err != io.EOF {
+			errorOut(tperror.TPError{fmt.Sprintf("Error reading from server: %v", err), tperror.ErrNetwork})
+		}
 	}()
 
 	go func() {
-		io.Copy(c, os.Stdin)
-		terminate(s, err)
+		if _, err := io.Copy(c, os.Stdin); err != nil && err != io.EOF {
+			errorOut(tperror.TPError{fmt.Sprintf("Error writing to server: %v", err), tperror.ErrNetwork})
+		}
 	}()
 
 	select {}
