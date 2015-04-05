@@ -14,21 +14,9 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/term"
+	"github.com/erikh/termproxy/tperror"
 	"github.com/kr/pty"
 	"github.com/ogier/pflag"
-)
-
-type tpError struct {
-	message  string
-	exitcode uint8
-}
-
-const (
-	ErrUsage    uint8 = 1
-	ErrTerminal       = 1 << iota
-	ErrCommand        = 1 << iota
-	ErrTLS            = 1 << iota
-	ErrNetwork        = 1 << iota
 )
 
 var (
@@ -38,7 +26,6 @@ var (
 )
 
 var (
-	errorChan   chan tpError
 	windowState *term.State
 )
 
@@ -52,32 +39,19 @@ func diag(m error) {
 	fmt.Fprintf(os.Stderr, "%v", m)
 }
 
-func respondToErrorChan() {
-	if errorChan == nil {
-		errorChan = make(chan tpError)
-	}
-
-	errorOut(<-errorChan)
-}
-
-func errorToChan(e tpError) {
-	errorChan <- e
-}
-
-func errorOut(e tpError) {
+func errorOut(e tperror.TPError) {
 	if err := term.RestoreTerminal(0, windowState); err != nil {
-		errorOut(tpError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), ErrTerminal})
+		tperror.ErrorOut(tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
 	}
 
-	fmt.Fprintf(os.Stderr, e.message)
-	os.Exit(int(e.exitcode))
+	tperror.ErrorOut(e)
 }
 
 func main() {
 	pflag.Usage = func() {
 		fmt.Printf("usage: %s <options> [host] [program]\n", filepath.Base(os.Args[0]))
 		pflag.PrintDefaults()
-		os.Exit(int(ErrUsage))
+		os.Exit(int(tperror.ErrUsage))
 	}
 
 	pflag.Parse()
@@ -88,22 +62,22 @@ func main() {
 
 	windowState, err := term.MakeRaw(0)
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("Could not create a raw terminal: %v", err), ErrTerminal})
+		errorOut(tperror.TPError{fmt.Sprintf("Could not create a raw terminal: %v", err), tperror.ErrTerminal})
 	}
 
 	cmd := exec.Command(pflag.Arg(1))
 	pty, err := pty.Start(cmd)
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("Could not start program %s: %v", cmd, err), ErrCommand})
+		errorOut(tperror.TPError{fmt.Sprintf("Could not start program %s: %v", cmd, err), tperror.ErrCommand})
 	}
 
 	ws, err := term.GetWinsize(0)
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("Could not retrieve the terminal dimensions: %v", err), ErrTerminal})
+		errorOut(tperror.TPError{fmt.Sprintf("Could not retrieve the terminal dimensions: %v", err), tperror.ErrTerminal})
 	}
 
 	if err := term.SetWinsize(pty.Fd(), ws); err != nil {
-		errorOut(tpError{fmt.Sprintf("Could not set the terminal size of the PTY: %v", err), ErrTerminal})
+		errorOut(tperror.TPError{fmt.Sprintf("Could not set the terminal size of the PTY: %v", err), tperror.ErrTerminal})
 	}
 
 	go func() {
@@ -111,7 +85,7 @@ func main() {
 		pty.Close()
 
 		if err := term.RestoreTerminal(0, windowState); err != nil {
-			errorOut(tpError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), ErrTerminal})
+			errorOut(tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
 		}
 
 		fmt.Println()
@@ -122,12 +96,12 @@ func main() {
 
 	cert, err := tls.LoadX509KeyPair(*serverCertPath, *serverKeyPath)
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("TLS certificate load error for %s, %s: %v", err), ErrTLS})
+		errorOut(tperror.TPError{fmt.Sprintf("TLS certificate load error for %s, %s: %v", err), tperror.ErrTLS})
 	}
 
 	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("TLS certificate load error for %s: %v", err), ErrTLS})
+		errorOut(tperror.TPError{fmt.Sprintf("TLS certificate load error for %s: %v", err), tperror.ErrTLS})
 	}
 
 	pool := x509.NewCertPool()
@@ -142,10 +116,8 @@ func main() {
 	})
 
 	if err != nil {
-		errorOut(tpError{fmt.Sprintf("Network Error trying to listen on %s: %v", pflag.Arg(0)), ErrNetwork})
+		errorOut(tperror.TPError{fmt.Sprintf("Network Error trying to listen on %s: %v", pflag.Arg(0)), tperror.ErrNetwork})
 	}
-
-	go respondToErrorChan()
 
 	input := new(bytes.Buffer)
 	output := new(bytes.Buffer)
