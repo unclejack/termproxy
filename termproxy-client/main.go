@@ -34,6 +34,7 @@ func main() {
 
 	if pflag.NArg() != 1 {
 		fmt.Printf("usage: %s [host]\n", os.Args[0])
+		pflag.PrintDefaults()
 		os.Exit(1)
 	}
 
