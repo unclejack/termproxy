@@ -29,6 +29,12 @@ Then ship the `ca.crt` and `client.*` files to your client users. Note that the
 files must be in the current working directory for both the server and the
 client.
 
+Alternatively, if you may wish to run the `generate_certs.sh` script at the
+root of this repository which will generate the appropriate certs for a CA,
+server, and a single client key, and copy the appropriate certificates and keys
+into the termproxy-client directory. This script is mostly useful for
+development of termproxy.
+
 ## Installation
 
 ```bash
