@@ -82,6 +82,11 @@ func main() {
 
 	go func() {
 		cmd.Wait()
+		// FIXME sloppy as heck but works for now.
+		for _, c := range connections {
+			c.Close()
+		}
+
 		pty.Close()
 
 		if err := term.RestoreTerminal(0, windowState); err != nil {

@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 
 	"github.com/docker/docker/pkg/term"
 	"github.com/erikh/termproxy/tperror"
 	"github.com/ogier/pflag"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -95,11 +97,16 @@ func main() {
 
 	go func() {
 		if _, err := io.Copy(c, os.Stdin); err != nil && err != io.EOF {
-			errorOut(tperror.TPError{fmt.Sprintf("Error writing to server: %v", err), tperror.ErrNetwork})
+			if neterr, ok := err.(*net.OpError); ok && neterr.Err == unix.EPIPE {
+				term.RestoreTerminal(0, windowState)
+				fmt.Println("\n\nConnection terminated!")
+				os.Exit(0)
+			} else {
+				fmt.Printf("%#v\n", err)
+				errorOut(tperror.TPError{fmt.Sprintf("Error writing to server: %v", err), tperror.ErrNetwork})
+			}
 		}
 	}()
 
 	select {}
-
-	fmt.Println("Shell exited!")
 }
