@@ -22,7 +22,7 @@ const (
 	ErrNetwork        = 1 << iota
 )
 
-func ErrorOut(e TPError) {
+func ErrorOut(e *TPError) {
 	fmt.Fprintf(os.Stderr, e.Message)
 	os.Exit(int(e.ExitCode))
 }

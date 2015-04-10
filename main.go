@@ -41,9 +41,9 @@ func diag(m error) {
 	}
 }
 
-func errorOut(e tperror.TPError) {
+func errorOut(e *tperror.TPError) {
 	if err := term.RestoreTerminal(0, windowState); err != nil {
-		tperror.ErrorOut(tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
+		tperror.ErrorOut(&tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
 	}
 
 	tperror.ErrorOut(e)
@@ -65,12 +65,10 @@ func main() {
 	serve()
 }
 
-func setTerminal() {
+func setTerminal() error {
 	var err error
 	windowState, err = term.MakeRaw(0)
-	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Could not create a raw terminal: %v", err), tperror.ErrTerminal})
-	}
+	return err
 }
 
 func waitForClose(cmd *exec.Cmd, pty *os.File) {
@@ -84,7 +82,7 @@ func waitForClose(cmd *exec.Cmd, pty *os.File) {
 	pty.Close()
 
 	if err := term.RestoreTerminal(0, windowState); err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
+		errorOut(&tperror.TPError{fmt.Sprintf("Could not restore the terminal size during exit: %v", err), tperror.ErrTerminal})
 	}
 
 	fmt.Println()
@@ -93,44 +91,46 @@ func waitForClose(cmd *exec.Cmd, pty *os.File) {
 	os.Exit(0)
 }
 
-func startCommand() *os.File {
-	cmd := exec.Command(pflag.Arg(1))
+func startCommand(command string) (*os.File, error) {
+	cmd := exec.Command(command)
 	pty, err := pty.Start(cmd)
 	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Could not start program %s: %v", cmd, err), tperror.ErrCommand})
+		return nil, err
 	}
 
 	go waitForClose(cmd, pty)
 
-	return pty
+	return pty, nil
 }
 
-func setPTYTerminal(pty *os.File) {
+func setPTYTerminal(pty *os.File) *tperror.TPError {
 	ws, err := term.GetWinsize(0)
 	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Could not retrieve the terminal dimensions: %v", err), tperror.ErrTerminal})
+		return &tperror.TPError{fmt.Sprintf("Could not retrieve the terminal dimensions: %v", err), tperror.ErrTerminal}
 	}
 
 	if err := term.SetWinsize(pty.Fd(), ws); err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Could not set the terminal size of the PTY: %v", err), tperror.ErrTerminal})
+		return &tperror.TPError{fmt.Sprintf("Could not set the terminal size of the PTY: %v", err), tperror.ErrTerminal}
 	}
+
+	return nil
 }
 
-func loadCerts() (tls.Certificate, *x509.CertPool) {
+func loadCerts() (tls.Certificate, *x509.CertPool, *tperror.TPError) {
 	cert, err := tls.LoadX509KeyPair(*serverCertPath, *serverKeyPath)
 	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("TLS certificate load error for %s, %s: %v", err), tperror.ErrTLS})
+		return tls.Certificate{}, nil, &tperror.TPError{fmt.Sprintf("TLS certificate load error for %s, %s: %v", err), tperror.ErrTLS}
 	}
 
 	content, err := ioutil.ReadFile(*caCertPath)
 	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("TLS certificate load error for %s: %v", err), tperror.ErrTLS})
+		return tls.Certificate{}, nil, &tperror.TPError{fmt.Sprintf("TLS certificate load error for %s: %v", err), tperror.ErrTLS}
 	}
 
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(content)
 
-	return cert, pool
+	return cert, pool, nil
 }
 
 func readRemoteInput(c net.Conn, input *bytes.Buffer) {
@@ -203,10 +203,25 @@ func copyPTY(pty *os.File, output io.Writer) {
 }
 
 func serve() {
-	setTerminal()
-	pty := startCommand()
-	setPTYTerminal(pty)
-	cert, pool := loadCerts()
+	if err := setTerminal(); err != nil {
+		errorOut(&tperror.TPError{fmt.Sprintf("Could not create a raw terminal: %v", err), tperror.ErrTerminal})
+	}
+
+	cmd := pflag.Arg(1)
+
+	pty, err := startCommand(cmd)
+	if err != nil {
+		errorOut(&tperror.TPError{fmt.Sprintf("Could not start program %s: %v", cmd, err), tperror.ErrCommand})
+	}
+
+	if tperr := setPTYTerminal(pty); tperr != nil {
+		errorOut(tperr)
+	}
+
+	cert, pool, tperr := loadCerts()
+	if tperr != nil {
+		errorOut(tperr)
+	}
 
 	l, err := tls.Listen("tcp", pflag.Arg(0), &tls.Config{
 		RootCAs:      pool,
@@ -217,7 +232,7 @@ func serve() {
 	})
 
 	if err != nil {
-		errorOut(tperror.TPError{fmt.Sprintf("Network Error trying to listen on %s: %v", pflag.Arg(0)), tperror.ErrNetwork})
+		errorOut(&tperror.TPError{fmt.Sprintf("Network Error trying to listen on %s: %v", pflag.Arg(0)), tperror.ErrNetwork})
 	}
 
 	input := new(bytes.Buffer)
@@ -227,8 +242,7 @@ func serve() {
 	go copyStdin(input)
 	go copyPTY(pty, output)
 
-	// there's gotta be a good way to do this in an evented/blocking manner. This
-	// is a big CPU hog right now.
+	// there's gotta be a good way to do this in an evented/blocking manner.
 	for {
 		if input.Len() > 0 {
 			mutex.Lock()
