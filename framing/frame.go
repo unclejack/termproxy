@@ -1,16 +1,24 @@
-package main
+package framing
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 )
 
+type MessageType int16
+
 const (
-	WinchMessage = iota
+	WinchMessage MessageType = iota
 	DataMessage
 )
+
+type Message interface {
+	Type() MessageType
+	WriteType(io.Writer) error
+	WriteTo(io.Writer) error
+	ReadFrom(io.Reader) error
+}
 
 type Winch struct {
 	Width  int16
@@ -18,19 +26,40 @@ type Winch struct {
 }
 
 type Data struct {
-	length int32
 	data   []byte
+	length int32
+}
+
+func (msg *Data) Type() MessageType {
+	return DataMessage
+}
+
+func (w *Winch) Type() MessageType {
+	return WinchMessage
+}
+
+func (data *Data) WriteType(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, DataMessage)
+}
+
+func (winch *Winch) WriteType(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, WinchMessage)
 }
 
 func (msg *Data) Len() int {
 	return int(msg.length)
 }
 
-func (winch *Winch) WriteTo(w io.Writer) {
-	var messageType int16 = WinchMessage
-	binary.Write(w, binary.LittleEndian, messageType)
-	binary.Write(w, binary.LittleEndian, winch.Width)
-	binary.Write(w, binary.LittleEndian, winch.Height)
+func (winch *Winch) WriteTo(w io.Writer) error {
+	if err := binary.Write(w, binary.LittleEndian, winch.Width); err != nil {
+		return err
+	}
+
+	if err := binary.Write(w, binary.LittleEndian, winch.Height); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (w *Winch) ReadFrom(r io.Reader) (err error) {
@@ -42,11 +71,11 @@ func (w *Winch) ReadFrom(r io.Reader) (err error) {
 	return
 }
 
-func (msg *Data) WriteTo(w io.Writer) {
-	var messageType int16 = DataMessage
-	binary.Write(w, binary.LittleEndian, messageType)
+func (msg *Data) WriteTo(w io.Writer) error {
+	msg.length = int32(len(msg.data))
 	binary.Write(w, binary.LittleEndian, msg.length)
-	w.Write(msg.data)
+	_, err := w.Write(msg.data)
+	return err
 }
 
 func (msg *Data) ReadFrom(r io.Reader) (err error) {
@@ -86,7 +115,7 @@ func (msg *Data) Bytes() []byte {
 type StreamParser struct {
 	DataHandler    func(io.Reader) error
 	ErrorHandler   func(error)
-	MsgTypeHandler func(int16)
+	MsgTypeHandler func(MessageType)
 	WinchHandler   func(io.Reader) error
 	Reader         io.Reader
 }
@@ -94,15 +123,20 @@ type StreamParser struct {
 func (s *StreamParser) Loop() {
 	var (
 		err     error
-		msgType int16
+		msgType MessageType
 	)
+
 	for err == nil {
 		err = binary.Read(s.Reader, binary.LittleEndian, &msgType)
 		if err != nil {
 			s.ErrorHandler(err)
 			return
 		}
-		s.MsgTypeHandler(msgType)
+
+		if s.MsgTypeHandler != nil {
+			s.MsgTypeHandler(msgType)
+		}
+
 		switch msgType {
 		case WinchMessage:
 			err = s.WinchHandler(s.Reader)
@@ -110,7 +144,10 @@ func (s *StreamParser) Loop() {
 			err = s.DataHandler(s.Reader)
 		}
 	}
-	s.ErrorHandler(err)
+
+	if err != io.EOF {
+		s.ErrorHandler(err)
+	}
 }
 
 func WinchPrinter(r io.Reader) (err error) {
@@ -137,6 +174,6 @@ func ErrorPrinter(err error) {
 	}
 }
 
-func MsgTypePrinter(msgType int16) {
+func MsgTypePrinter(msgType MessageType) {
 	fmt.Printf("found a message of type %d\n", msgType)
 }
