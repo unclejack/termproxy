@@ -15,8 +15,9 @@ const (
 
 type Message interface {
 	Type() MessageType
+	WriteType(io.Writer) error
 	WriteTo(io.Writer) error
-	ReadFrom(io.Writer) error
+	ReadFrom(io.Reader) error
 }
 
 type Winch struct {
@@ -35,6 +36,14 @@ func (msg *Data) Type() MessageType {
 
 func (w *Winch) Type() MessageType {
 	return WinchMessage
+}
+
+func (data *Data) WriteType(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, DataMessage)
+}
+
+func (winch *Winch) WriteType(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, WinchMessage)
 }
 
 func (msg *Data) Len() int {
@@ -116,13 +125,18 @@ func (s *StreamParser) Loop() {
 		err     error
 		msgType MessageType
 	)
+
 	for err == nil {
 		err = binary.Read(s.Reader, binary.LittleEndian, &msgType)
 		if err != nil {
 			s.ErrorHandler(err)
 			return
 		}
-		s.MsgTypeHandler(msgType)
+
+		if s.MsgTypeHandler != nil {
+			s.MsgTypeHandler(msgType)
+		}
+
 		switch msgType {
 		case WinchMessage:
 			err = s.WinchHandler(s.Reader)
@@ -130,7 +144,10 @@ func (s *StreamParser) Loop() {
 			err = s.DataHandler(s.Reader)
 		}
 	}
-	s.ErrorHandler(err)
+
+	if err != io.EOF {
+		s.ErrorHandler(err)
+	}
 }
 
 func WinchPrinter(r io.Reader) (err error) {
