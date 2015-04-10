@@ -20,13 +20,12 @@ import (
 	"github.com/ogier/pflag"
 )
 
+var DEBUG = os.Getenv("DEBUG")
+
 var (
 	mutex       = new(sync.Mutex)
 	connMutex   = new(sync.Mutex)
 	connections = []net.Conn{}
-)
-
-var (
 	windowState *term.State
 )
 
@@ -37,7 +36,9 @@ var (
 )
 
 func diag(m error) {
-	fmt.Fprintf(os.Stderr, "%v", m)
+	if DEBUG != "" {
+		fmt.Fprintf(os.Stderr, "%v", m)
+	}
 }
 
 func errorOut(e tperror.TPError) {
