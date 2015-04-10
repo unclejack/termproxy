@@ -6,6 +6,37 @@ import (
 	"testing"
 )
 
+func TestWinchExchangeErrors(t *testing.T) {
+	buf := new(bytes.Buffer)
+	buf.Write([]byte{byte(WinchMessage), 0, 0})
+	winch := &Winch{}
+	if err := winch.ReadFrom(buf); err == nil {
+		t.Fatal("Under-full buffer in winch read does not error")
+	}
+}
+
+func TestDataExchangeErrors(t *testing.T) {
+	buf := new(bytes.Buffer)
+
+	data := &Data{data: []byte("hello"), length: 30}
+	if err := data.WriteTo(buf); err != nil {
+		// this call should not error. see below for the error condition.
+		t.Fatal(err)
+	}
+
+	if data.length != 5 {
+		t.Fatal("Did not adjust frame after setting length to 30 bytes for a 5 byte frame")
+	}
+
+	buf.Reset()
+
+	buf.Write([]byte{byte(DataMessage), 255, 0})
+	data = &Data{}
+	if err := data.ReadFrom(buf); err == nil {
+		t.Fatal("Did not receive error after writing a frame with a longer message length than the message")
+	}
+}
+
 func TestDataExchange(t *testing.T) {
 	buf := new(bytes.Buffer)
 	data := &Data{data: []byte("hello")}
