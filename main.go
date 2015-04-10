@@ -279,4 +279,7 @@ func serve() {
 
 		time.Sleep(20 * time.Millisecond)
 	}
+
+	term.RestoreTerminal(0, windowState)
+	fmt.Println("Shell exited!")
 }
